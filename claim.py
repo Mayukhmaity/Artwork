@@ -55,6 +55,20 @@ german_new_dataframe.drop(german_new_dataframe.columns[german_new_dataframe.colu
 spanish_new_dataframe = pd.read_csv('/Users/macbook/PycharmProjects/Artwork/Middleware/spanish.csv')
 spanish_new_dataframe.drop(spanish_new_dataframe.columns[spanish_new_dataframe.columns.str.contains('unnamed',case = False)],axis = 1, inplace = True)
 
+
+'''
+Part of Rule 2: if the claim is positive then check the ingredients from the Allergen ingredients list 
+and define it in the Reason column about the  allergen ingredients present in the product 
+only ingredients part is taken into consideration
+'''
+header_row =0
+ingredients = pd.read_excel(open('/Users/macbook/PycharmProjects/Artwork/Input/CU PIRD ALLERGEN BOT keywords_EU.xlsx','rb'),sheet_name='BY ALLERGEN_ALL LANGUAGES')
+ingredients.columns = ingredients.iloc[header_row]
+#ingredients = ingredients.drop(header_row)
+ingredients_list_english = ingredients["Allergen in Ingredent list "].dropna().tolist()
+del ingredients_list_english[0]
+#print(ingredients_list_english)
+
 '''
 Rule 1 to check the context with keywords and then again check the context with the postive claim keywords
 and negative claim keywords if it matches then it is either positive or negative claim
@@ -78,11 +92,11 @@ else:
     #print(english)
     english_new_dataframe['claim'] = english
     reslt_true_english_df = english_new_dataframe[english_new_dataframe['claim'] == "true"]
-    save_output(reslt_true_english_df, 'english')
+    save_output(reslt_true_english_df, 'english_true')
     '''
     Check the Context is a positive claim or negative claim 
     '''
-    english_claim_dataframe = pd.read_csv('/Users/macbook/PycharmProjects/Artwork/Middleware/english.csv')
+    english_claim_dataframe = pd.read_csv('/Users/macbook/PycharmProjects/Artwork/Middleware/english_true.csv')
     english_claim_dataframe.drop(english_claim_dataframe.columns[english_claim_dataframe.columns.str.contains('unnamed', case=False)], axis=1,inplace=True)
     patterns = [nlp.make_doc(text) for text in english_claim_positive]
     matcher.add("TerminologyList", patterns)
@@ -99,7 +113,7 @@ else:
    # print(justify_claim)
     justify_negative_claim = []
     english_claim_dataframe['justify claim'] = justify_claim
-    reslt_negative_english_df = english_claim_dataframe[english_claim_dataframe['justify claim'] == "check negative claim"]
+    reslt_negative_english_df = english_claim_dataframe.loc[english_claim_dataframe['justify claim'] == "check negative claim"]
     patterns = [nlp.make_doc(text) for text in english_claim_negative]
     matcher.add("TerminologyList", patterns)
     for sentence in reslt_negative_english_df['Context']:
@@ -113,8 +127,8 @@ else:
             span = doc[start:end]
             #print(span.text)
     reslt_negative_english_df['justify claim'] = justify_negative_claim
-    claim_output_df = pd.concat([english_claim_dataframe[english_claim_dataframe['justify claim'] == "positive claim"],reslt_negative_english_df])
-    save_output(claim_output_df, 'english')
+    claim_output_df = pd.concat([english_claim_dataframe.loc[english_claim_dataframe['justify claim'] == "positive claim"],reslt_negative_english_df])
+    save_output(claim_output_df, 'english_positive_negative')
 
 if spanish_dataframe.dropna().empty:
     print("Sorry the file is empty for Spanish")
@@ -131,9 +145,9 @@ else:
         doc = nlp(sentence)
         matches = matcher(doc)
         if len(matches) > 0:
-            justify_claim.append("claim")
+            justify_claim.append("positive claim")
         else:
-            justify_claim.append("no claim")
+            justify_claim.append("check negative claim")
         for match_id, start, end in matches:
             span = doc[start:end]
             print(span.text)
@@ -155,23 +169,64 @@ else:
         doc = nlp(sentence)
         matches = matcher(doc)
         if len(matches) > 0:
-            justify_claim.append("claim")
+            justify_claim.append("positive claim")
         else:
-            justify_claim.append("no claim")
+            justify_claim.append("check negative claim")
         for match_id, start, end in matches:
             span = doc[start:end]
             print(span.text)
     print(justify_claim)
     german_claim_dataframe['justify claim'] = justify_claim
     save_output(german_claim_dataframe, 'german')
-
+'''
+Check special claim
+'''
 if english_dataframe.dropna().empty:
     pass
 else:
     english = claim(english_new_dataframe)
-    print(english)
+    justify_claim = []
+    check_ingredients = []
+    enlist_ingredients = []
+    new_list = []
     english_new_dataframe['claim'] = english
-    reslt_false_english_df = english_new_dataframe[english_new_dataframe['claim'] == "false"]
+    reslt_false_english_df = english_new_dataframe.loc[english_new_dataframe['claim'] == "false"]
+    patterns = [nlp.make_doc(text) for text in special_claims]
+    matcher.add("TerminologyList", patterns)
+    for sentence in reslt_false_english_df['Context']:
+        doc = nlp(sentence)
+        matches = matcher(doc)
+        if len(matches) > 0:
+            justify_claim.append("special claim")
+        else:
+            justify_claim.append("no claim found")
+        for match_id, start, end in matches:
+            span = doc[start:end]
+            print(span.text)
+    #print(justify_claim)
+    reslt_false_english_df['justify claim'] = justify_claim
+    reslt_false_english_df = reslt_false_english_df[reslt_false_english_df['justify claim'] == "special claim"]
+    reslt_false_english_df.drop(reslt_false_english_df.columns[reslt_false_english_df.columns.str.contains('unnamed', case=False)], axis=1, inplace=True)
+    if reslt_false_english_df.empty:
+        pass
+    else:
+
+        for sentence in reslt_false_english_df['Ingredients']:
+            doc = nlp(sentence)
+            matches = matcher(doc)
+            for match_id, start, end in matches:
+                span = doc[start:end]
+                check_ingredients.append(span.text)
+            enlist_ingredients.append(check_ingredients)
+
+        for ing in enlist_ingredients:
+            new_list.append(list(set(ing)))
+        print(new_list)
+
+        reslt_false_english_df['Reason'] = new_list
+
+    save_output(reslt_false_english_df, 'special_english')
+
 
 if spanish_dataframe.dropna().empty:
     pass
@@ -189,89 +244,38 @@ else:
 
 
 '''
-Rule 2: if the claim is positive then check the ingredients from the Allergen ingredients list 
+Part of Rule 2: if the claim is positive then check the ingredients from the Allergen ingredients list 
 and define it in the Reason column about the  allergen ingredients present in the product
 '''
-header_row = 0
-english_check_claim_dataframe = pd.read_csv('/Users/macbook/PycharmProjects/Artwork/Middleware/english.csv')
-ingredients = pd.read_excel(open('/Users/macbook/PycharmProjects/Artwork/Input/CU PIRD ALLERGEN BOT keywords_EU.xlsx','rb'),sheet_name='BY ALLERGEN_ALL LANGUAGES')
-ingredients.columns = ingredients.iloc[header_row]
-#ingredients = ingredients.drop(header_row)
-ingredients_list = ingredients["Allergen in Ingredent list "].dropna().tolist()
-del ingredients_list[0]
-print(ingredients_list)
-
-#print(english)
-#english_dataframe['claim'] = claim
-#reslt_english_df = english_dataframe[english_dataframe['claim'] == "true"]
-
-#english_dataframe = ocr_data[['Keyword','Context','Ingredients','Reason','claim']]
-
-#output_excel  = english_dataframe.to_csv('C:\\Users\\mayukhm505\\Desktop\\Unilever\\CupirdArtworkFinalOCR.csv')
-
-#output_excel = ocr_data.to_csv('C:\\Users\\mayukhm505\\Desktop\\Unilever\\CupirdArtworkFinalOCR.csv')
-#print(claim)
 
 
+# It checks the ingredients on positive claims only
+if english_dataframe.dropna().empty:
+    print("Sorry the file is empty for English")
+else:
+    english_df = pd.read_csv('/Users/macbook/PycharmProjects/Artwork/Middleware/english_positive_negative.csv')
+    output_english_df = english_df[english_df['justify claim'] == "positive claim"]
+    check_ingredients = []
+    enlist_ingredients = []
+    new_list = []
+    ingredient_pattern = [nlp.make_doc(text) for text in ingredients_list_english]
+    matcher.add("TerminologyIngredientsList", ingredient_pattern)
+    for sentence in output_english_df['Ingredients']:
+        doc = nlp(sentence)
+        matches = matcher(doc)
+        #print(len(matches))
+        for match_id, start, end in matches:
+            span = doc[start:end]
+            check_ingredients.append(span.text)
+        enlist_ingredients.append(check_ingredients)
 
-# def word2vec(word):
-#     from collections import Counter
-#     from math import sqrt
-#
-#     # count the characters in word
-#     cw = Counter(word)
-#     # precomputes a set of the different characters
-#     sw = set(cw)
-#     # precomputes the "length" of the word vector
-#     lw = sqrt(sum(c*c for c in cw.values()))
-#
-#     # return a tuple
-#     return cw, sw, lw
-#
-# def cosdis(v1, v2):
-#     # which characters are common to the two words?
-#     common = v1[1].intersection(v2[1])
-#     # by definition of cosine distance we have
-#     return sum(v1[0][ch]*v2[0][ch] for ch in common)/v1[2]/v2[2]
-#
-#
-# header_row = 0
-#
-#
-# print(english_claim_positive)
-#
-# str = "Water, rapeseed oil, sour cream (8%) (MILK), spirit vinegar, modified starch, EGG yolk, yoghurt powder (MILK), salt, sugar, acid (lactic acid), chives (0.15%), onion powder, thickener (xanthan gum), black pepper."
-# check_list = list(str.split(","))
-# threshold = 0.80     # if needed
-# for key in english_claim_positive:
-#     for word in check_list:
-#         try:
-#             # print(key)
-#             # print(word)
-#             res = cosdis(word2vec(word), word2vec(key))
-#             # print(res)
-#             #print("The cosine similarity between : {} and : {} is: {}".format(word, key, res*100))
-#             if res > threshold:
-#                 check_positive = "true"
-#                # print("The claim is True")
-#                 print("Found a word with cosine distance > 70 : {} with original word: {}".format(word, key))
-#             else:
-#                 check_positive = ""
-#         except IndexError:
-#             pass
-#             if(check_positive == ""):
-#                 threshold = 0.70     # if needed
-#                 for key in english_claim_negative:
-#                     for word in check_list:
-#                         try:
-#                             # print(key)
-#                             # print(word)
-#                             res = cosdis(word2vec(word), word2vec(key))
-#                             # print(res)
-#                             #print("The cosine similarity between : {} and : {} is: {}".format(word, key, res*100))
-#                             if res > threshold:
-#                                 pass
-#                                # print("The claim is False")
-#                                 print("Found a word with cosine distance > 70 : {} with original word: {}".format(word, key))
-#                         except IndexError:
-#                             pass
+    for ing in enlist_ingredients:
+        new_list.append(list(set(ing)))
+    #print(new_list)
+
+    output_english_df['Reason'] = new_list
+    output_english = output_english_df.to_csv('/Users/macbook/PycharmProjects/Artwork/Output/english.csv')
+
+
+
+
